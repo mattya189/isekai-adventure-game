@@ -1,0 +1,39 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`knockout, revive, timeout, snapshots, and carry-over > produces a stable sample battle summary snapshot 1`] = `
+{
+  "endTurn": 55,
+  "finalHp": [
+    [
+      "hero_aria",
+      0,
+    ],
+    [
+      "mage_noel",
+      0,
+    ],
+    [
+      "priest_luna",
+      0,
+    ],
+    [
+      "orc_guard",
+      0,
+    ],
+    [
+      "venom_wolf",
+      117,
+    ],
+    [
+      "night_witch",
+      265,
+    ],
+  ],
+  "reason": "wipe",
+  "result": "lose",
+  "snapshotTurns": [
+    50,
+    55,
+  ],
+}
+`;
