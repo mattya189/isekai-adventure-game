@@ -187,6 +187,44 @@ describe('knockout, revive, timeout, snapshots, and carry-over', () => {
     expect(revived.hp).toBe(300);
     expect(revived.reviveUsed).toBe(true);
     expect(result.carryOut.dead).toMatchObject({ hp: 300, knockedOut: false, reviveUsed: true });
+    expect(result.revivals).toEqual([{
+      turn: 1,
+      reviverId: 'priest',
+      reviverName: 'priest',
+      targetId: 'dead',
+      targetName: 'dead',
+      restoredHp: 300,
+    }]);
+  });
+
+  it('restores 30 percent HP and never revives the same unit a second time', () => {
+    const revive: ActiveSkill = { id: 'revive', name: '蘇生', category: 'revive', power: 0, target: 'ally_dead', cooldown: 1, reviveHpRatio: 0.3 };
+    const priest = makeUnit('priest', {
+      stats: { ...makeUnit('x').stats, spd: 200, hate: 0 },
+      skills: [{ skill: revive, priority: 3 }],
+    });
+    const fragile = makeUnit('fragile', { stats: { ...makeUnit('x').stats, hate: 100 } });
+    const killer = makeUnit('killer', { stats: { ...makeUnit('x').stats, atk: 5000, spd: 100 } });
+    const result = runBattle(input([priest, fragile], [killer], {
+      maxTurns: 4,
+      carryOver: { fragile: { hp: 0, knockedOut: true, reviveUsed: false } },
+      debug: true,
+    }));
+
+    expect(result.revivals).toHaveLength(1);
+    expect(result.revivals[0]).toMatchObject({ targetId: 'fragile', restoredHp: 300 });
+    expect(result.events.filter((event) => event.summary.includes('を蘇生'))).toHaveLength(1);
+    expect(result.carryOut.fragile).toEqual({ hp: 0, knockedOut: true, reviveUsed: true });
+    expect(result.debugEvents?.[0]?.targets[0]).toMatchObject({ targetId: 'fragile', healing: 300 });
+  });
+
+  it('only includes detailed action data when debug mode is enabled', () => {
+    const normal = runBattle(input([makeUnit('a')], [makeUnit('d')], { maxTurns: 1 }));
+    const debug = runBattle(input([makeUnit('a')], [makeUnit('d')], { maxTurns: 1, debug: true }));
+    expect(normal.debugEvents).toBeUndefined();
+    expect(debug.debugEvents).toHaveLength(1);
+    expect(debug.debugEvents?.[0]).toMatchObject({ turn: 1, actorId: 'a', skillName: '攻撃' });
+    expect(debug.debugEvents?.[0]?.targets[0]).toMatchObject({ targetId: 'd', damage: expect.any(Number) });
   });
 
   it('attacker loses at the exact turn limit and stores interval plus final snapshots', () => {
