@@ -1,13 +1,15 @@
 import './style.css';
 import { runBattle } from './battle';
 import { runBattleBatch, type BattleBatchSummary } from './batch';
-import { createScenarioBattleInput, DEFAULT_MAX_TURNS, sampleScenarios, type SampleScenario } from './sample';
-import type { BattleOutput, ModifierSnapshot, Snapshot, StatusSnapshot, UnitSnapshot } from './types';
+import { createScenarioBattleInput, DEFAULT_MAX_TURNS, DEFAULT_SNAPSHOT_INTERVAL, sampleScenarios, type SampleScenario } from './sample';
+import type { BattleOutput, DebugTargetEvent, ModifierSnapshot, Snapshot, StatusSnapshot, UnitSnapshot } from './types';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const dialog = document.querySelector<HTMLDialogElement>('#detail-dialog')!;
 let seed = 20260921;
 let maxTurns = DEFAULT_MAX_TURNS;
+let snapshotInterval = DEFAULT_SNAPSHOT_INTERVAL;
+let debugLogEnabled = false;
 let scenarioId: SampleScenario['id'] = 'balanced';
 let output: BattleOutput = runBattle(createBattleInput(seed));
 let page = 0;
@@ -28,7 +30,7 @@ function currentScenario(): SampleScenario {
 }
 
 function createBattleInput(battleSeed: number) {
-  return { ...createScenarioBattleInput(scenarioId, battleSeed), maxTurns };
+  return { ...createScenarioBattleInput(scenarioId, battleSeed), maxTurns, snapshotInterval, debug: debugLogEnabled };
 }
 
 function label(key: string): string {
@@ -51,12 +53,17 @@ function modifierChip(item: ModifierSnapshot): string {
 
 function card(unit: UnitSnapshot): string {
   const ratio = Math.max(0, unit.hp / unit.maxHp * 100);
-  const states = [...unit.statuses.map(statusChip), ...unit.modifiers.map(modifierChip)];
+  const states = [
+    ...(unit.knockedOut ? ['<em>戦闘不能</em>'] : []),
+    ...(unit.reviveUsed ? ['<em class="revived">蘇生済み</em>'] : []),
+    ...unit.statuses.map(statusChip),
+    ...unit.modifiers.map(modifierChip),
+  ];
   return `<button class="unit-card ${unit.knockedOut ? 'down' : ''}" data-unit="${escapeHtml(unit.id)}">
     ${icon(unit)}
     <span class="unit-copy"><strong>${escapeHtml(unit.name)}</strong><small>${unit.kind === 'human' ? '人間' : 'モンスター'}・行動${unit.actionCount}回</small>
       <span class="hp"><i style="width:${ratio}%"></i></span><small>HP ${unit.hp.toLocaleString()} / ${unit.maxHp.toLocaleString()}</small>
-      <span class="chips">${unit.knockedOut ? '<em>戦闘不能</em>' : states.slice(0, 4).join('')}</span>
+      <span class="chips">${states.slice(0, 5).join('')}</span>
     </span>
   </button>`;
 }
@@ -79,6 +86,30 @@ function batchPanel(): string {
   </div>`;
 }
 
+function revivalPanel(): string {
+  if (!output.revivals.length) return '<p class="empty-note">この戦闘では蘇生は使用されていません。</p>';
+  return `<ol class="revival-list">${output.revivals.map((record) => `<li><b>${record.turn}T</b><span>${escapeHtml(record.reviverName)} → ${escapeHtml(record.targetName)}</span><strong>HP ${record.restoredHp.toLocaleString()}で復帰</strong></li>`).join('')}</ol>`;
+}
+
+function formatStateChange(value: string): string {
+  const [key, rest] = value.split(':', 2);
+  return rest ? `${label(key!)} ${rest}` : value;
+}
+
+function debugTargetLine(target: DebugTargetEvent): string {
+  const values = [
+    target.damage > 0 ? `ダメージ ${target.damage.toLocaleString()}` : '',
+    target.healing > 0 ? `回復 ${target.healing.toLocaleString()}` : '',
+    ...target.stateChanges.map(formatStateChange),
+  ].filter(Boolean);
+  return `${escapeHtml(target.targetName)}：${escapeHtml(values.join('／') || '変化なし')}`;
+}
+
+function debugLog(): string {
+  if (!debugLogEnabled) return '<p class="empty-note">OFF：通常の戦闘結果には詳細ログを含めません。</p>';
+  return `<details class="debug-log"><summary>1行動ずつのログ（${output.debugEvents?.length ?? 0}件）</summary><ol>${(output.debugEvents ?? []).map((event) => `<li><b>${event.turn}T ${escapeHtml(event.actorName)}</b><span>使用：${escapeHtml(event.skillName)}</span><small>${event.targets.length ? event.targets.map(debugTargetLine).join('<br>') : '対象なし・ダメージなし・状態変化なし'}</small></li>`).join('')}</ol></details>`;
+}
+
 function render(): void {
   const snapshot = output.snapshots[page]!;
   const scenario = currentScenario();
@@ -91,11 +122,16 @@ function render(): void {
       <div class="seed-row"><input id="seed" inputmode="numeric" value="${seed}" aria-label="シード値"><button id="random-seed" type="button">ランダム生成</button></div>
       <label for="max-turns">最大ターン数</label>
       <input id="max-turns" type="number" inputmode="numeric" min="1" step="1" value="${maxTurns}" aria-label="最大ターン数">
+      <label for="snapshot-interval">スナップショット間隔</label>
+      <input id="snapshot-interval" type="number" inputmode="numeric" min="1" step="1" value="${snapshotInterval}" aria-label="スナップショット間隔">
+      <label class="toggle" for="debug-log-toggle"><input id="debug-log-toggle" type="checkbox" ${debugLogEnabled ? 'checked' : ''}> デバッグ用詳細ログを表示</label>
       <button id="rerun" class="primary" type="button">この条件で再戦する</button>
     </section>
     <section class="result"><div><small>結果</small><strong class="${output.result}">${output.result === 'win' ? '勝利' : '敗北'}</strong></div><div><small>決着</small><strong>${output.endTurn}ターン</strong></div><div><small>理由</small><strong>${output.reason === 'wipe' ? '全滅' : '時間切れ'}</strong></div></section>
     <nav class="pager"><button id="prev" ${page === 0 ? 'disabled' : ''}>‹ 前</button><b>${snapshot.turn}ターン時点</b><button id="next" ${page === output.snapshots.length - 1 ? 'disabled' : ''}>次 ›</button></nav>
     ${team(snapshot, 'attackers', '味方パーティ')}${team(snapshot, 'defenders', '敵パーティ')}
+    <section class="revivals"><h2>蘇生の使用状況</h2>${revivalPanel()}</section>
+    <section class="debug"><h2>デバッグ行動ログ</h2>${debugLog()}</section>
     <section class="batch"><div><h2>100戦一括テスト</h2><p>現在の編成・最大${maxTurns}ターンで、シード${seed}〜${seed + 99}を実行します。</p></div><button id="run-batch" type="button" ${batchRunning ? 'disabled' : ''}>100戦を実行</button>${batchPanel()}</section>
     <details><summary>直近の行動ログ</summary><ol>${output.events.slice(Math.max(0, snapshot.turn - 8), snapshot.turn).map((event) => `<li><b>${event.turn}T ${escapeHtml(event.actorName)}</b><span>${escapeHtml(event.skillName)}：${escapeHtml(event.summary)}</span></li>`).join('')}</ol></details>
     <footer>キャラクターをタップすると状態の詳細を確認できます。</footer>`;
@@ -103,29 +139,35 @@ function render(): void {
   document.querySelector<HTMLButtonElement>('#prev')?.addEventListener('click', () => { page -= 1; render(); });
   document.querySelector<HTMLButtonElement>('#next')?.addEventListener('click', () => { page += 1; render(); });
   document.querySelector<HTMLSelectElement>('#scenario')?.addEventListener('change', (event) => {
-    maxTurns = readMaxTurns();
+    readTimingInputs();
     scenarioId = (event.currentTarget as HTMLSelectElement).value as SampleScenario['id'];
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#random-seed')?.addEventListener('click', () => {
-    maxTurns = readMaxTurns();
+    readTimingInputs();
     seed = crypto.getRandomValues(new Uint32Array(1))[0]!;
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#rerun')?.addEventListener('click', () => {
     seed = readSeed();
-    maxTurns = readMaxTurns();
+    readTimingInputs();
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#run-batch')?.addEventListener('click', async () => {
     seed = readSeed();
-    maxTurns = readMaxTurns();
+    readTimingInputs();
     batchRunning = true;
     render();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     batchSummary = runBattleBatch(createBattleInput, seed, 100);
     batchRunning = false;
     render();
+  });
+  document.querySelector<HTMLInputElement>('#debug-log-toggle')?.addEventListener('change', (event) => {
+    seed = readSeed();
+    readTimingInputs();
+    debugLogEnabled = (event.currentTarget as HTMLInputElement).checked;
+    runSingleBattle();
   });
   document.querySelectorAll<HTMLButtonElement>('.unit-card').forEach((element) => element.addEventListener('click', () => {
     const unit = snapshot.units.find((entry) => entry.id === element.dataset.unit);
@@ -143,6 +185,17 @@ function readMaxTurns(): number {
   const value = document.querySelector<HTMLInputElement>('#max-turns')?.value ?? '';
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_TURNS;
+}
+
+function readSnapshotInterval(): number {
+  const value = document.querySelector<HTMLInputElement>('#snapshot-interval')?.value ?? '';
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SNAPSHOT_INTERVAL;
+}
+
+function readTimingInputs(): void {
+  maxTurns = readMaxTurns();
+  snapshotInterval = readSnapshotInterval();
 }
 
 function runSingleBattle(): void {
