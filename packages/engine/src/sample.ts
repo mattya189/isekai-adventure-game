@@ -46,6 +46,20 @@ const sleepSong: ActiveSkill = {
   id: 'sleep_song', name: '眠り歌', category: 'magical', power: 0.35, target: 'enemy_all', cooldown: 6,
   effects: [{ kind: 'status', status: { type: 'sleep', chance: 0.32, duration: 2 } }],
 };
+const weaken: ActiveSkill = {
+  id: 'weaken', name: '弱体の呪い', category: 'support', power: 0, target: 'enemy_all', cooldown: 4,
+  effects: [
+    { kind: 'modifier', modifier: { stat: 'atk', amount: -0.25, duration: 3 } },
+    { kind: 'modifier', modifier: { stat: 'def', amount: -0.2, duration: 3 } },
+  ],
+};
+const battleCry: ActiveSkill = {
+  id: 'battle_cry', name: '戦陣の号令', category: 'support', power: 0, target: 'ally_all', cooldown: 5,
+  effects: [
+    { kind: 'modifier', modifier: { stat: 'atk', amount: 0.25, duration: 3 } },
+    { kind: 'modifier', modifier: { stat: 'spd', amount: 0.15, duration: 3 } },
+  ],
+};
 
 const filler = (prefix: string): ActiveSkill[] => [1, 2, 3].map((n) => ({
   id: `${prefix}_basic_${n}`,
@@ -98,6 +112,71 @@ export function createSampleBattleInput(seed = 20260921): BattleInput {
     maxTurns: 200,
     snapshotInterval: 50,
   };
+}
+
+const fortressAttackers: UnitSetup[] = [
+  unit('fortress_scout', '試練の斥候', 'human', { hp: 2400, atk: 65, def: 360, mag: 60, mdef: 340, spd: 105, crit: 0, evade: 2, accuracy: 5, hate: 2 }, [skill(slash, 1)], [sturdy, antiPoison]),
+  unit('fortress_guard', '試練の守兵', 'human', { hp: 2800, atk: 60, def: 390, mag: 55, mdef: 360, spd: 92, crit: 0, evade: 1, accuracy: 5, hate: 4 }, [skill(provoke, 3), skill(slash, 1)], [sturdy, antiPoison]),
+];
+
+const fortressDefenders: UnitSetup[] = [
+  unit('adamant_golem', '金剛ゴーレム', 'monster', { hp: 12000, atk: 55, def: 620, mag: 40, mdef: 600, spd: 82, crit: 0, evade: 0, accuracy: 5, hate: 5 }, [skill(provoke, 3), skill(shieldBash, 1)], [sturdy, antiPoison]),
+];
+
+const revivalDefenders: UnitSetup[] = [
+  unit('fallen_knight', '亡国の騎士', 'monster', { hp: 920, atk: 230, def: 125, mag: 70, mdef: 110, spd: 112, crit: 12, evade: 5, accuracy: 8, hate: 3 }, [skill(shieldBash, 2), skill(slash, 1)], [sturdy]),
+  unit('bone_mage', '骨術師モルテ', 'monster', { hp: 760, atk: 55, def: 80, mag: 245, mdef: 185, spd: 106, crit: 8, evade: 4, accuracy: 10, hate: 1 }, [skill(revive, 3), skill(heal, 2), skill(fireball, 1)], [magicFocus]),
+  unit('grave_hound', '墓守の猟犬', 'monster', { hp: 820, atk: 250, def: 95, mag: 50, mdef: 90, spd: 128, crit: 16, evade: 9, accuracy: 10, hate: 2 }, [skill(poisonFang, 2), skill(slash, 1)], [quickStart]),
+];
+
+const statusAttackers: UnitSetup[] = [
+  unit('hexer_iris', '呪術師イリス', 'human', { hp: 1050, atk: 65, def: 105, mag: 255, mdef: 210, spd: 116, crit: 10, evade: 6, accuracy: 12, hate: 1 }, [skill(weaken, 3), skill(sleepSong, 2), skill(fireball, 1)], [magicFocus]),
+  unit('banner_rei', '軍師レイ', 'human', { hp: 1280, atk: 155, def: 145, mag: 165, mdef: 160, spd: 108, crit: 8, evade: 5, accuracy: 10, hate: 2 }, [skill(battleCry, 3), skill(blizzard, 2), skill(slash, 1)], [quickStart]),
+  unit('apothecary_mia', '薬師ミア', 'human', { hp: 1120, atk: 90, def: 120, mag: 215, mdef: 205, spd: 101, crit: 6, evade: 5, accuracy: 8, hate: 1 }, [skill(heal, 3), skill(poisonFang, 2)], [antiPoison]),
+];
+
+const statusDefenders: UnitSetup[] = [
+  unit('plague_slime', '疫毒スライム', 'monster', { hp: 1350, atk: 170, def: 145, mag: 180, mdef: 150, spd: 98, crit: 6, evade: 2, accuracy: 8, hate: 3 }, [skill(poisonFang, 3), skill(darkMist, 2)], [antiPoison]),
+  unit('dream_moth', '夢喰い蛾', 'monster', { hp: 980, atk: 80, def: 90, mag: 235, mdef: 195, spd: 121, crit: 10, evade: 10, accuracy: 12, hate: 1 }, [skill(sleepSong, 3), skill(blizzard, 2)], [quickStart, magicFocus]),
+  unit('ash_imp', '灰火の小鬼', 'monster', { hp: 1050, atk: 120, def: 105, mag: 230, mdef: 125, spd: 109, crit: 12, evade: 6, accuracy: 10, hate: 2 }, [skill(fireball, 3), skill(weaken, 2)], [magicFocus]),
+];
+
+export interface SampleScenario {
+  id: 'balanced' | 'fortress' | 'revival' | 'status';
+  name: string;
+  description: string;
+  createInput: (seed: number) => BattleInput;
+}
+
+export const sampleScenarios: SampleScenario[] = [
+  {
+    id: 'balanced',
+    name: '通常編成',
+    description: '攻撃・回復・妨害を含む基本の3対3です。',
+    createInput: createSampleBattleInput,
+  },
+  {
+    id: 'fortress',
+    name: '鉄壁・時間切れ',
+    description: '双方の火力を抑え、硬い敵との時間切れを確認します。',
+    createInput: (seed) => ({ seed, attackers: fortressAttackers, defenders: fortressDefenders, rules: [], maxTurns: 60, snapshotInterval: 15 }),
+  },
+  {
+    id: 'revival',
+    name: '蘇生持ち',
+    description: '敵の骨術師が倒れた仲間を一度だけ蘇生します。',
+    createInput: (seed) => ({ seed, attackers: sampleAttackers, defenders: revivalDefenders, rules: [], maxTurns: 200, snapshotInterval: 25 }),
+  },
+  {
+    id: 'status',
+    name: '状態異常中心',
+    description: '毒・火傷・睡眠と能力の上昇・低下を多用します。',
+    createInput: (seed) => ({ seed, attackers: statusAttackers, defenders: statusDefenders, rules: [], maxTurns: 200, snapshotInterval: 20 }),
+  },
+];
+
+export function createScenarioBattleInput(scenarioId: SampleScenario['id'], seed = 20260921): BattleInput {
+  return (sampleScenarios.find((scenario) => scenario.id === scenarioId) ?? sampleScenarios[0]!).createInput(seed);
 }
 
 export function runSampleBattle(seed = 20260921) {
