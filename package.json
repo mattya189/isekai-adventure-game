@@ -1,0 +1,21 @@
+{
+  "name": "isekai-adventure-phase-1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm --workspace @isekai/engine test",
+    "test:coverage": "npm --workspace @isekai/engine run test:coverage",
+    "typecheck": "npm --workspace @isekai/engine run typecheck",
+    "dev": "npm --workspace @isekai/engine run dev",
+    "build": "npm --workspace @isekai/engine run build"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
+  }
+}
