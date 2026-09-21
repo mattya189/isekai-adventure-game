@@ -1,14 +1,15 @@
 import './style.css';
 import { runBattle } from './battle';
 import { runBattleBatch, type BattleBatchSummary } from './batch';
-import { createScenarioBattleInput, sampleScenarios, type SampleScenario } from './sample';
+import { createScenarioBattleInput, DEFAULT_MAX_TURNS, sampleScenarios, type SampleScenario } from './sample';
 import type { BattleOutput, ModifierSnapshot, Snapshot, StatusSnapshot, UnitSnapshot } from './types';
 
 const app = document.querySelector<HTMLElement>('#app')!;
 const dialog = document.querySelector<HTMLDialogElement>('#detail-dialog')!;
 let seed = 20260921;
+let maxTurns = DEFAULT_MAX_TURNS;
 let scenarioId: SampleScenario['id'] = 'balanced';
-let output: BattleOutput = runBattle(createScenarioBattleInput(scenarioId, seed));
+let output: BattleOutput = runBattle(createBattleInput(seed));
 let page = 0;
 let batchSummary: BattleBatchSummary | undefined;
 let batchRunning = false;
@@ -24,6 +25,10 @@ function escapeHtml(value: string): string {
 
 function currentScenario(): SampleScenario {
   return sampleScenarios.find((scenario) => scenario.id === scenarioId) ?? sampleScenarios[0]!;
+}
+
+function createBattleInput(battleSeed: number) {
+  return { ...createScenarioBattleInput(scenarioId, battleSeed), maxTurns };
 }
 
 function label(key: string): string {
@@ -84,35 +89,41 @@ function render(): void {
       <p>${escapeHtml(scenario.description)}</p>
       <label for="seed">シード値</label>
       <div class="seed-row"><input id="seed" inputmode="numeric" value="${seed}" aria-label="シード値"><button id="random-seed" type="button">ランダム生成</button></div>
+      <label for="max-turns">最大ターン数</label>
+      <input id="max-turns" type="number" inputmode="numeric" min="1" step="1" value="${maxTurns}" aria-label="最大ターン数">
       <button id="rerun" class="primary" type="button">この条件で再戦する</button>
     </section>
     <section class="result"><div><small>結果</small><strong class="${output.result}">${output.result === 'win' ? '勝利' : '敗北'}</strong></div><div><small>決着</small><strong>${output.endTurn}ターン</strong></div><div><small>理由</small><strong>${output.reason === 'wipe' ? '全滅' : '時間切れ'}</strong></div></section>
     <nav class="pager"><button id="prev" ${page === 0 ? 'disabled' : ''}>‹ 前</button><b>${snapshot.turn}ターン時点</b><button id="next" ${page === output.snapshots.length - 1 ? 'disabled' : ''}>次 ›</button></nav>
     ${team(snapshot, 'attackers', '味方パーティ')}${team(snapshot, 'defenders', '敵パーティ')}
-    <section class="batch"><div><h2>100戦一括テスト</h2><p>現在の編成を、シード${seed}〜${seed + 99}で実行します。</p></div><button id="run-batch" type="button" ${batchRunning ? 'disabled' : ''}>100戦を実行</button>${batchPanel()}</section>
+    <section class="batch"><div><h2>100戦一括テスト</h2><p>現在の編成・最大${maxTurns}ターンで、シード${seed}〜${seed + 99}を実行します。</p></div><button id="run-batch" type="button" ${batchRunning ? 'disabled' : ''}>100戦を実行</button>${batchPanel()}</section>
     <details><summary>直近の行動ログ</summary><ol>${output.events.slice(Math.max(0, snapshot.turn - 8), snapshot.turn).map((event) => `<li><b>${event.turn}T ${escapeHtml(event.actorName)}</b><span>${escapeHtml(event.skillName)}：${escapeHtml(event.summary)}</span></li>`).join('')}</ol></details>
     <footer>キャラクターをタップすると状態の詳細を確認できます。</footer>`;
 
   document.querySelector<HTMLButtonElement>('#prev')?.addEventListener('click', () => { page -= 1; render(); });
   document.querySelector<HTMLButtonElement>('#next')?.addEventListener('click', () => { page += 1; render(); });
   document.querySelector<HTMLSelectElement>('#scenario')?.addEventListener('change', (event) => {
+    maxTurns = readMaxTurns();
     scenarioId = (event.currentTarget as HTMLSelectElement).value as SampleScenario['id'];
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#random-seed')?.addEventListener('click', () => {
+    maxTurns = readMaxTurns();
     seed = crypto.getRandomValues(new Uint32Array(1))[0]!;
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#rerun')?.addEventListener('click', () => {
     seed = readSeed();
+    maxTurns = readMaxTurns();
     runSingleBattle();
   });
   document.querySelector<HTMLButtonElement>('#run-batch')?.addEventListener('click', async () => {
     seed = readSeed();
+    maxTurns = readMaxTurns();
     batchRunning = true;
     render();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    batchSummary = runBattleBatch(currentScenario().createInput, seed, 100);
+    batchSummary = runBattleBatch(createBattleInput, seed, 100);
     batchRunning = false;
     render();
   });
@@ -128,8 +139,14 @@ function readSeed(): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function readMaxTurns(): number {
+  const value = document.querySelector<HTMLInputElement>('#max-turns')?.value ?? '';
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_TURNS;
+}
+
 function runSingleBattle(): void {
-  output = runBattle(createScenarioBattleInput(scenarioId, seed));
+  output = runBattle(createBattleInput(seed));
   page = 0;
   batchSummary = undefined;
   render();

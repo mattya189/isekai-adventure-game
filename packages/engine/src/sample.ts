@@ -3,6 +3,9 @@ import type { ActiveSkill, BattleInput, EquippedSkill, PassiveSkill, UnitSetup, 
 
 const skill = (value: ActiveSkill, priority: 0 | 1 | 2 | 3): EquippedSkill => ({ skill: value, priority });
 
+export const DEFAULT_MAX_TURNS = 200;
+export const DEFAULT_SNAPSHOT_INTERVAL = 50;
+
 const slash: ActiveSkill = {
   id: 'slash', name: '斬撃', category: 'physical', power: 1.25, target: 'enemy_single', cooldown: 2,
 };
@@ -109,8 +112,8 @@ export function createSampleBattleInput(seed = 20260921): BattleInput {
     attackers: sampleAttackers,
     defenders: sampleDefenders,
     rules: sampleRules,
-    maxTurns: 200,
-    snapshotInterval: 50,
+    maxTurns: DEFAULT_MAX_TURNS,
+    snapshotInterval: DEFAULT_SNAPSHOT_INTERVAL,
   };
 }
 
@@ -159,19 +162,19 @@ export const sampleScenarios: SampleScenario[] = [
     id: 'fortress',
     name: '鉄壁・時間切れ',
     description: '双方の火力を抑え、硬い敵との時間切れを確認します。',
-    createInput: (seed) => ({ seed, attackers: fortressAttackers, defenders: fortressDefenders, rules: [], maxTurns: 60, snapshotInterval: 15 }),
+    createInput: (seed) => ({ seed, attackers: fortressAttackers, defenders: fortressDefenders, rules: [], maxTurns: DEFAULT_MAX_TURNS, snapshotInterval: DEFAULT_SNAPSHOT_INTERVAL }),
   },
   {
     id: 'revival',
     name: '蘇生持ち',
     description: '敵の骨術師が倒れた仲間を一度だけ蘇生します。',
-    createInput: (seed) => ({ seed, attackers: sampleAttackers, defenders: revivalDefenders, rules: [], maxTurns: 200, snapshotInterval: 25 }),
+    createInput: (seed) => ({ seed, attackers: sampleAttackers, defenders: revivalDefenders, rules: [], maxTurns: DEFAULT_MAX_TURNS, snapshotInterval: DEFAULT_SNAPSHOT_INTERVAL }),
   },
   {
     id: 'status',
     name: '状態異常中心',
     description: '毒・火傷・睡眠と能力の上昇・低下を多用します。',
-    createInput: (seed) => ({ seed, attackers: statusAttackers, defenders: statusDefenders, rules: [], maxTurns: 200, snapshotInterval: 20 }),
+    createInput: (seed) => ({ seed, attackers: statusAttackers, defenders: statusDefenders, rules: [], maxTurns: DEFAULT_MAX_TURNS, snapshotInterval: DEFAULT_SNAPSHOT_INTERVAL }),
   },
 ];
 
