@@ -8,9 +8,10 @@ describe('demo battle scenarios', () => {
     expect(sampleScenarios.map(({ id }) => id)).toEqual(['balanced', 'fortress', 'revival', 'status']);
   });
 
-  it('makes the fortress scenario reach the turn limit', () => {
+  it('uses the 200-turn default and stores four 50-turn snapshots on fortress timeout', () => {
     const result = runBattle(createScenarioBattleInput('fortress', 123));
-    expect(result).toMatchObject({ result: 'lose', reason: 'timeout', endTurn: 60 });
+    expect(result).toMatchObject({ result: 'lose', reason: 'timeout', endTurn: 200 });
+    expect(result.snapshots.map(({ turn }) => turn)).toEqual([50, 100, 150, 200]);
   });
 
   it('includes a working revive formation', () => {
@@ -35,7 +36,7 @@ describe('100 battle summary', () => {
       battles: 100,
       wins: 0,
       winRate: 0,
-      averageEndTurn: 60,
+      averageEndTurn: 200,
       timeouts: 100,
       timeoutRate: 1,
     });
