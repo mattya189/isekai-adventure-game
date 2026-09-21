@@ -113,6 +113,7 @@ export interface BattleInput {
   carryOver?: CarryOver;
   maxTurns: number;
   snapshotInterval: number;
+  debug?: boolean;
 }
 
 export interface StatusSnapshot {
@@ -157,11 +158,38 @@ export interface BattleEvent {
   summary: string;
 }
 
+export interface RevivalRecord {
+  turn: number;
+  reviverId: string;
+  reviverName: string;
+  targetId: string;
+  targetName: string;
+  restoredHp: number;
+}
+
+export interface DebugTargetEvent {
+  targetId: string;
+  targetName: string;
+  damage: number;
+  healing: number;
+  stateChanges: string[];
+}
+
+export interface DebugBattleEvent {
+  turn: number;
+  actorId: string;
+  actorName: string;
+  skillName: string;
+  targets: DebugTargetEvent[];
+}
+
 export interface BattleOutput {
   result: BattleResult;
   reason: BattleReason;
   endTurn: number;
   snapshots: Snapshot[];
   carryOut: CarryOver;
+  revivals: RevivalRecord[];
   events: BattleEvent[];
+  debugEvents?: DebugBattleEvent[];
 }

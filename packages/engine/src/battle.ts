@@ -5,11 +5,14 @@ import type {
   BattleEvent,
   BattleInput,
   BattleOutput,
+  DebugBattleEvent,
+  DebugTargetEvent,
   BuffStatKey,
   CarryOver,
   ModifierSnapshot,
   PassiveEffect,
   RuleEffect,
+  RevivalRecord,
   Side,
   Snapshot,
   StatKey,
@@ -340,15 +343,48 @@ function applySkillEffects(target: RuntimeUnit, effects: BattleEffect[] | undefi
   }
 }
 
-function executeSkill(actor: RuntimeUnit, skill: ActiveSkill, units: RuntimeUnit[], rng: RandomSource): string {
+interface SkillResolution {
+  summary: string;
+  targets: DebugTargetEvent[];
+  revivals: Omit<RevivalRecord, 'turn' | 'reviverId' | 'reviverName'>[];
+}
+
+function stateChanges(before: RuntimeUnit, after: RuntimeUnit): string[] {
+  const changes: string[] = [];
+  for (const status of after.statuses) {
+    const previous = before.statuses.find((entry) => entry.type === status.type);
+    if (!previous || previous.remaining !== status.remaining) changes.push(`${status.type}:残り${status.remaining}`);
+  }
+  for (const modifier of after.modifiers.slice(before.modifiers.length)) {
+    changes.push(`${modifier.stat}:${modifier.amount >= 0 ? '+' : ''}${modifier.amount}:残り${modifier.remaining}`);
+  }
+  if (before.hp > 0 && after.hp === 0) changes.push('戦闘不能');
+  if (before.hp === 0 && after.hp > 0) changes.push('蘇生済み');
+  return changes;
+}
+
+function debugTarget(before: RuntimeUnit, after: RuntimeUnit): DebugTargetEvent {
+  return {
+    targetId: after.setup.id,
+    targetName: after.setup.name,
+    damage: Math.max(0, before.hp - after.hp),
+    healing: Math.max(0, after.hp - before.hp),
+    stateChanges: stateChanges(before, after),
+  };
+}
+
+function executeSkill(actor: RuntimeUnit, skill: ActiveSkill, units: RuntimeUnit[], rng: RandomSource): SkillResolution {
   const targets = skill.target === 'enemy_random_n' ? [] : selectTargets(actor, skill, units, rng);
   const summaries: string[] = [];
+  const targetEvents: DebugTargetEvent[] = [];
+  const revivals: SkillResolution['revivals'] = [];
   const hitCount = skill.target === 'enemy_random_n' ? (skill.hits ?? 1) : targets.length;
   for (let hit = 0; hit < hitCount; hit += 1) {
     const target = skill.target === 'enemy_random_n'
       ? weightedTarget(units.filter((unit) => unit.side === opposite(actor.side) && isAlive(unit)), rng)
       : targets[hit];
     if (!target) continue;
+    const before = { ...target, statuses: target.statuses.map((status) => ({ ...status })), modifiers: target.modifiers.map((modifier) => ({ ...modifier })) };
     if (skill.category === 'physical' || skill.category === 'magical') {
       const damage = dealDamage(actor, target, skill, rng);
       summaries.push(damage ? `${target.setup.name}に${damage}ダメージ` : `${target.setup.name}は回避`);
@@ -357,13 +393,16 @@ function executeSkill(actor: RuntimeUnit, skill: ActiveSkill, units: RuntimeUnit
       summaries.push(`${target.setup.name}を${heal(actor, target, skill, rng)}回復`);
       applySkillEffects(target, skill.effects, rng);
     } else if (skill.category === 'revive') {
-      summaries.push(revive(target, skill) ? `${target.setup.name}を蘇生` : `${target.setup.name}への蘇生失敗`);
+      const revived = revive(target, skill);
+      summaries.push(revived ? `${target.setup.name}を蘇生（HP ${target.hp}）` : `${target.setup.name}への蘇生失敗`);
+      if (revived) revivals.push({ targetId: target.setup.id, targetName: target.setup.name, restoredHp: target.hp });
     } else {
       applySkillEffects(target, skill.effects, rng);
       summaries.push(`${target.setup.name}に効果を付与`);
     }
+    targetEvents.push(debugTarget(before, target));
   }
-  return summaries.join('、') || '対象なし';
+  return { summary: summaries.join('、') || '対象なし', targets: targetEvents, revivals };
 }
 
 function damageFromEnvironment(unit: RuntimeUnit, amount: number): void {
@@ -468,6 +507,8 @@ export function runBattle(input: BattleInput): BattleOutput {
   for (const unit of units) applySkillEffects(unit, battleStartEffects, rng);
   const snapshots: Snapshot[] = [];
   const events: BattleEvent[] = [];
+  const revivals: RevivalRecord[] = [];
+  const debugEvents: DebugBattleEvent[] = [];
   let turn = 0;
 
   while (turn < input.maxTurns && !sideWiped(units, 'attackers') && !sideWiped(units, 'defenders')) {
@@ -483,16 +524,26 @@ export function runBattle(input: BattleInput): BattleOutput {
     turn += 1;
     let skillName = '行動不能';
     let summary = '行動できなかった';
+    let debugTargets: DebugTargetEvent[] = [];
     const cannotAct = Boolean(getStatus(actor, 'stun') || getStatus(actor, 'sleep')) ||
       (Boolean(getStatus(actor, 'paralysis')) && rng.chance(0.5));
 
     if (!cannotAct) {
       const { skill, slot } = chooseSkill(actor, units);
       skillName = skill.name;
-      summary = executeSkill(actor, skill, units, rng);
+      const resolution = executeSkill(actor, skill, units, rng);
+      summary = resolution.summary;
+      debugTargets = resolution.targets;
+      revivals.push(...resolution.revivals.map((record) => ({
+        turn,
+        reviverId: actor.setup.id,
+        reviverName: actor.setup.name,
+        ...record,
+      })));
       if (slot !== undefined) actor.cooldowns[slot] = skill.cooldown;
     }
     events.push({ turn, actorId: actor.setup.id, actorName: actor.setup.name, skillName, summary });
+    if (input.debug) debugEvents.push({ turn, actorId: actor.setup.id, actorName: actor.setup.name, skillName, targets: debugTargets });
     finishAction(actor);
 
     if (turn % input.snapshotInterval === 0) snapshots.push(makeSnapshot(turn, units));
@@ -509,6 +560,8 @@ export function runBattle(input: BattleInput): BattleOutput {
     endTurn: turn,
     snapshots,
     carryOut: carryOut(units),
+    revivals,
     events,
+    ...(input.debug ? { debugEvents } : {}),
   };
 }
